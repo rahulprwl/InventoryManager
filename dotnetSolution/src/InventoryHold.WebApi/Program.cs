@@ -5,6 +5,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddControllers();
 builder.Services
     .AddRedisDependencies(builder.Configuration)
     .AddMongoDependencies(builder.Configuration);
@@ -20,6 +21,7 @@ app.UseSwaggerUI(options =>
 });
 
 app.UseHttpsRedirection();
+app.MapControllers();
 
 var summaries = new[]
 {
