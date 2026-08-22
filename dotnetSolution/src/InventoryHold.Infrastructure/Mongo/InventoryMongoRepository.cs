@@ -34,6 +34,7 @@ public sealed class InventoryMongoRepository : IInventoryMongoRepository
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(limit, 0);
 
         return await items.Find(Builders<Item>.Filter.Empty)
+            .Project<Item>(Builders<Item>.Projection.Exclude("_id"))
             .SortBy(item => item.Uuid)
             .Skip(offset)
             .Limit(limit)
