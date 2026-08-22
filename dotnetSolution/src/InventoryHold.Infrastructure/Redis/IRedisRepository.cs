@@ -16,6 +16,8 @@ public interface IRedisRepository
 
     Task<string?> GetNullableValueAsync(string key, CommandFlags flags = CommandFlags.None);
 
+    Task<IReadOnlyList<string>> FindKeysAsync(string pattern, CancellationToken cancellationToken = default);
+
     Task<bool> AcquireLockAsync(string key, string token, TimeSpan ttl, CommandFlags flags = CommandFlags.None);
 
     Task<bool> ReleaseLockAsync(string key, string token, CommandFlags flags = CommandFlags.None);

@@ -5,6 +5,9 @@ namespace InventoryHold.Domain.Adapters;
 
 public interface IHoldStateAdapter
 {
+    Task<IReadOnlyDictionary<Guid, HoldStatus>> GetAllAsync(
+        CancellationToken cancellationToken = default);
+
     Task<HoldStatus?> GetAsync(Guid transactionId, CancellationToken cancellationToken = default);
 
     Task SetAsync(

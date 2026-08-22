@@ -4,6 +4,8 @@ namespace InventoryHold.Contracts.DTO;
 
 public class HoldDto
 {
+	public string? HoldId { get; set; }
+
 	public required Hold Hold { get; set; }
 
 	public required Guid ItemUuid { get; set; }

@@ -4,11 +4,13 @@ namespace InventoryHold.Infrastructure.Redis;
 
 public sealed class RedisRepository : IRedisRepository
 {
+    private readonly IConnectionMultiplexer connection;
     private readonly IDatabase database;
     private const string ReleaseLockScript = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
 
     public RedisRepository(IConnectionMultiplexer connection)
     {
+        this.connection = connection;
         database = connection.GetDatabase();
     }
 
@@ -56,6 +58,23 @@ public sealed class RedisRepository : IRedisRepository
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         var value = await database.StringGetAsync(key, flags);
         return value.HasValue ? value.ToString() : null;
+    }
+
+    public async Task<IReadOnlyList<string>> FindKeysAsync(
+        string pattern,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pattern);
+        var server = connection.GetServers().FirstOrDefault(server => server.IsConnected)
+            ?? throw new InvalidOperationException("No connected Redis server is available.");
+        var keys = new List<string>();
+        foreach (var key in server.Keys(database.Database, pattern, pageSize: 250))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            keys.Add(key.ToString());
+        }
+
+        return keys;
     }
 
     public Task<bool> AcquireLockAsync(string key, string token, TimeSpan ttl, CommandFlags flags = CommandFlags.None)

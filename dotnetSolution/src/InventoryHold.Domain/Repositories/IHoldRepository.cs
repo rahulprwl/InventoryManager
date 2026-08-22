@@ -18,6 +18,14 @@ public interface IHoldRepository
         string holdId,
         CancellationToken cancellationToken = default);
 
+    Task<HoldDto?> GetHoldByTransactionIdAsync(
+        Guid transactionId,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<HoldDto>> GetHoldsAsync(
+        IEnumerable<Guid> transactionIds,
+        CancellationToken cancellationToken = default);
+
     Task<bool> UpdateStatusIfActiveAsync(
         string holdId,
         HoldStatus status,

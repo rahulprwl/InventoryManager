@@ -8,6 +8,14 @@ namespace InventoryHold.WebApi.Controller;
 [Route("api/holds")]
 public sealed class HoldController(IHoldService holdService) : ControllerBase
 {
+    [HttpGet]
+    [ProducesResponseType(typeof(IReadOnlyList<HoldSummaryDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAll(CancellationToken cancellationToken)
+    {
+        var holds = await holdService.GetAllHoldsAsync(cancellationToken);
+        return Ok(holds);
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create(
         [FromBody] HoldDto request,
@@ -16,7 +24,7 @@ public sealed class HoldController(IHoldService holdService) : ControllerBase
         try
         {
             var holdId = await holdService.CreateHoldAsync(request, cancellationToken);
-            return Created($"api/holds/{request.Hold.TransactionId}", new { holdId, request.Hold.TransactionId });
+            return Created($"api/holds/{holdId}", new { holdId, request.Hold.TransactionId });
         }
         catch (ArgumentException exception)
         {

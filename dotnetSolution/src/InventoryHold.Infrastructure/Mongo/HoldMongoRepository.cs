@@ -30,7 +30,8 @@ public sealed class HoldMongoRepository : IHoldMongoRepository
         };
 
         await holds.InsertOneAsync(document, cancellationToken: cancellationToken);
-        return hold.Hold.TransactionId.ToString();
+        hold.HoldId = document.Id.ToString();
+        return hold.HoldId;
     }
 
     public async Task<bool> DeleteHoldAsync(
@@ -50,14 +51,39 @@ public sealed class HoldMongoRepository : IHoldMongoRepository
         string holdId,
         CancellationToken cancellationToken = default)
     {
-        if (!Guid.TryParse(holdId, out var transactionId))
+        if (!ObjectId.TryParse(holdId, out var objectId))
         {
             return null;
         }
 
+        var document = await holds.Find(hold => hold.Id == objectId)
+            .FirstOrDefaultAsync(cancellationToken);
+        return document is null ? null : ToDto(document);
+    }
+
+    public async Task<HoldDto?> GetHoldByTransactionIdAsync(
+        Guid transactionId,
+        CancellationToken cancellationToken = default)
+    {
         var document = await holds.Find(hold => hold.Hold.TransactionId == transactionId)
             .FirstOrDefaultAsync(cancellationToken);
         return document is null ? null : ToDto(document);
+    }
+
+    public async Task<IReadOnlyList<HoldDto>> GetHoldsAsync(
+        IEnumerable<Guid> transactionIds,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = transactionIds.Distinct().ToArray();
+        if (ids.Length == 0)
+        {
+            return Array.Empty<HoldDto>();
+        }
+
+        var documents = await holds.Find(
+                Builders<HoldDocument>.Filter.In(document => document.Hold.TransactionId, ids))
+            .ToListAsync(cancellationToken);
+        return documents.Select(ToDto).ToArray();
     }
 
     public async Task<bool> UpdateStatusIfActiveAsync(
@@ -65,7 +91,7 @@ public sealed class HoldMongoRepository : IHoldMongoRepository
         HoldStatus status,
         CancellationToken cancellationToken = default)
     {
-        if (!Guid.TryParse(holdId, out var transactionId))
+        if (!ObjectId.TryParse(holdId, out var objectId))
         {
             return false;
         }
@@ -74,7 +100,7 @@ public sealed class HoldMongoRepository : IHoldMongoRepository
             .Set(hold => hold.Hold.Status, status)
             .Set(hold => hold.Hold.UpdatedAt, DateTime.UtcNow);
         var result = await holds.UpdateOneAsync(
-            hold => hold.Hold.TransactionId == transactionId && hold.Hold.Status == HoldStatus.Active,
+            hold => hold.Id == objectId && hold.Hold.Status == HoldStatus.Active,
             update,
             cancellationToken: cancellationToken);
         return result.ModifiedCount == 1;
@@ -85,7 +111,7 @@ public sealed class HoldMongoRepository : IHoldMongoRepository
         HoldStatus status,
         CancellationToken cancellationToken = default)
     {
-        if (!Guid.TryParse(holdId, out var transactionId))
+        if (!ObjectId.TryParse(holdId, out var objectId))
         {
             return false;
         }
@@ -94,7 +120,7 @@ public sealed class HoldMongoRepository : IHoldMongoRepository
             .Set(hold => hold.Hold.Status, status)
             .Set(hold => hold.Hold.UpdatedAt, DateTime.UtcNow);
         var result = await holds.UpdateOneAsync(
-            hold => hold.Hold.TransactionId == transactionId,
+            hold => hold.Id == objectId,
             update,
             cancellationToken: cancellationToken);
         return result.ModifiedCount == 1;
@@ -102,6 +128,7 @@ public sealed class HoldMongoRepository : IHoldMongoRepository
 
     private static HoldDto ToDto(HoldDocument document) => new()
     {
+        HoldId = document.Id.ToString(),
         Hold = document.Hold,
         ItemUuid = document.ItemUuid,
         Quantity = document.Quantity

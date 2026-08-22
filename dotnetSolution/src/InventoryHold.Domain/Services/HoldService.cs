@@ -16,6 +16,31 @@ public sealed class HoldService(
     private static readonly TimeSpan HoldLifetime = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(30);
 
+    public async Task<IReadOnlyList<HoldSummaryDto>> GetAllHoldsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var cachedHolds = await stateAdapter.GetAllAsync(cancellationToken);
+        if (cachedHolds.Count == 0)
+        {
+            return Array.Empty<HoldSummaryDto>();
+        }
+
+        var holds = await holdRepository.GetHoldsAsync(cachedHolds.Keys, cancellationToken);
+        return holds
+            .Where(hold => cachedHolds.ContainsKey(hold.Hold.TransactionId))
+            .Select(hold => new HoldSummaryDto(
+                hold.HoldId!,
+                hold.Hold.TransactionId,
+                hold.Hold.UserName,
+                hold.ItemUuid,
+                hold.Quantity,
+                hold.Hold.StartTime,
+                hold.Hold.ExpiresAt,
+                cachedHolds[hold.Hold.TransactionId],
+                hold.Hold.Status))
+            .ToArray();
+    }
+
     public async Task<string> CreateHoldAsync(HoldDto hold, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(hold);
@@ -75,14 +100,14 @@ public sealed class HoldService(
                 return;
             }
 
-            var hold = await FindByTransactionIdAsync(transactionId, cancellationToken);
+            var hold = await holdRepository.GetHoldByTransactionIdAsync(transactionId, cancellationToken);
             if (hold is null || hold.Hold.Status != HoldStatus.Active)
             {
                 return;
             }
 
             if (!await holdRepository.UpdateStatusIfActiveAsync(
-                    holdId: hold.Hold.TransactionId.ToString(), HoldStatus.Expired, cancellationToken))
+                    holdId: hold.HoldId!, HoldStatus.Expired, cancellationToken))
             {
                 return;
             }
@@ -105,11 +130,13 @@ public sealed class HoldService(
         bool restoreStock,
         CancellationToken cancellationToken)
     {
-        if (!Guid.TryParse(holdId, out var transactionId))
+        var hold = await holdRepository.GetHoldAsync(holdId, cancellationToken);
+        if (hold is null)
         {
-            throw new ArgumentException("Hold ID must be a transaction UUID.", nameof(holdId));
+            return false;
         }
 
+        var transactionId = hold.Hold.TransactionId;
         var token = await lockAdapter.AcquireAsync(transactionId, TimeSpan.FromSeconds(5), cancellationToken);
         if (token is null)
         {
@@ -118,7 +145,6 @@ public sealed class HoldService(
 
         try
         {
-            var hold = await FindByTransactionIdAsync(transactionId, cancellationToken);
             if (hold is null || hold.Hold.Status != HoldStatus.Active)
             {
                 return false;
@@ -146,8 +172,4 @@ public sealed class HoldService(
         }
     }
 
-    private async Task<HoldDto?> FindByTransactionIdAsync(Guid transactionId, CancellationToken cancellationToken)
-    {
-        return await holdRepository.GetHoldAsync(transactionId.ToString(), cancellationToken);
-    }
 }
