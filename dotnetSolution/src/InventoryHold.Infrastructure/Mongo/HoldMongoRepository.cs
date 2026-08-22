@@ -1,4 +1,6 @@
 using InventoryHold.Contracts.DTO;
+using InventoryHold.Contracts.Enums;
+using InventoryHold.Contracts.Model;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
@@ -28,7 +30,7 @@ public sealed class HoldMongoRepository : IHoldMongoRepository
         };
 
         await holds.InsertOneAsync(document, cancellationToken: cancellationToken);
-        return document.Id.ToString();
+        return hold.Hold.TransactionId.ToString();
     }
 
     public async Task<bool> DeleteHoldAsync(
@@ -43,6 +45,67 @@ public sealed class HoldMongoRepository : IHoldMongoRepository
         var result = await holds.DeleteOneAsync(hold => hold.Id == objectId, cancellationToken);
         return result.DeletedCount == 1;
     }
+
+    public async Task<HoldDto?> GetHoldAsync(
+        string holdId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(holdId, out var transactionId))
+        {
+            return null;
+        }
+
+        var document = await holds.Find(hold => hold.Hold.TransactionId == transactionId)
+            .FirstOrDefaultAsync(cancellationToken);
+        return document is null ? null : ToDto(document);
+    }
+
+    public async Task<bool> UpdateStatusIfActiveAsync(
+        string holdId,
+        HoldStatus status,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(holdId, out var transactionId))
+        {
+            return false;
+        }
+
+        var update = Builders<HoldDocument>.Update
+            .Set(hold => hold.Hold.Status, status)
+            .Set(hold => hold.Hold.UpdatedAt, DateTime.UtcNow);
+        var result = await holds.UpdateOneAsync(
+            hold => hold.Hold.TransactionId == transactionId && hold.Hold.Status == HoldStatus.Active,
+            update,
+            cancellationToken: cancellationToken);
+        return result.ModifiedCount == 1;
+    }
+
+    public async Task<bool> UpdateStatusAsync(
+        string holdId,
+        HoldStatus status,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(holdId, out var transactionId))
+        {
+            return false;
+        }
+
+        var update = Builders<HoldDocument>.Update
+            .Set(hold => hold.Hold.Status, status)
+            .Set(hold => hold.Hold.UpdatedAt, DateTime.UtcNow);
+        var result = await holds.UpdateOneAsync(
+            hold => hold.Hold.TransactionId == transactionId,
+            update,
+            cancellationToken: cancellationToken);
+        return result.ModifiedCount == 1;
+    }
+
+    private static HoldDto ToDto(HoldDocument document) => new()
+    {
+        Hold = document.Hold,
+        ItemUuid = document.ItemUuid,
+        Quantity = document.Quantity
+    };
 
     private sealed class HoldDocument
     {

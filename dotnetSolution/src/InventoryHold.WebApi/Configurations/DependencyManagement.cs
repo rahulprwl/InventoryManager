@@ -3,12 +3,15 @@ using InventoryHold.Infrastructure.RabbitMq;
 using InventoryHold.Infrastructure.Redis;
 using InventoryHold.Domain.Repositories;
 using InventoryHold.Domain.Services;
+using InventoryHold.Domain.Adapters;
+using InventoryHold.WebApi.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Serializers;
 using MongoDB.Driver;
+using InventoryHold.Contracts.DTO;
 using RabbitMQ.Client;
 using StackExchange.Redis;
 
@@ -26,6 +29,8 @@ public static class DependencyManagement
         services.AddSingleton<IConnectionMultiplexer>(
             _ => ConnectionMultiplexer.Connect(connectionString));
         services.AddScoped<IRedisRepository, RedisRepository>();
+        services.AddScoped<IHoldStateAdapter, HoldStateAdapter>();
+        services.AddScoped<IHoldLockAdapter, HoldLockAdapter>();
 
         return services;
     }
@@ -53,6 +58,7 @@ public static class DependencyManagement
 
         services.AddSingleton(connectionFactory);
         services.AddSingleton<IRabbitMqConnector, RabbitMqConnector>();
+        services.AddScoped<IHoldMessageAdapter, HoldMessageAdapter>();
 
         return services;
     }
@@ -62,6 +68,14 @@ public static class DependencyManagement
         IConfiguration configuration)
     {
         BsonSerializer.RegisterSerializer(new GuidSerializer(GuidRepresentation.Standard));
+        if (!BsonClassMap.IsClassMapRegistered(typeof(Item)))
+        {
+            BsonClassMap.RegisterClassMap<Item>(classMap =>
+            {
+                classMap.AutoMap();
+                classMap.SetIgnoreExtraElements(true);
+            });
+        }
 
         string connectionString = configuration.GetConnectionString("Mongo")
             ?? throw new InvalidOperationException("ConnectionStrings:Mongo is not configured.");
@@ -77,6 +91,8 @@ public static class DependencyManagement
         services.AddScoped<IItemService, ItemService>();
         services.AddScoped<IHoldRepository>(serviceProvider =>
             serviceProvider.GetRequiredService<IHoldMongoRepository>());
+        services.AddScoped<IHoldService, HoldService>();
+        services.AddHostedService<HoldExpiryWorker>();
 
         return services;
     }

@@ -57,7 +57,11 @@ public sealed class InventoryMongoRepository : IInventoryMongoRepository
         return await items.FindOneAndUpdateAsync(
             item => item.Uuid == itemUuid,
             update,
-            new FindOneAndUpdateOptions<Item> { ReturnDocument = ReturnDocument.After },
+            new FindOneAndUpdateOptions<Item>
+            {
+                ReturnDocument = ReturnDocument.After,
+                Projection = Builders<Item>.Projection.Exclude("_id")
+            },
             cancellationToken);
     }
 
@@ -97,7 +101,11 @@ public sealed class InventoryMongoRepository : IInventoryMongoRepository
         return await items.FindOneAndUpdateAsync(
             item => item.Uuid == itemUuid,
             update,
-            new FindOneAndUpdateOptions<Item> { ReturnDocument = ReturnDocument.After },
+            new FindOneAndUpdateOptions<Item>
+            {
+                ReturnDocument = ReturnDocument.After,
+                Projection = Builders<Item>.Projection.Exclude("_id")
+            },
             cancellationToken);
     }
 
