@@ -2,7 +2,7 @@ namespace InventoryHold.Contracts.DTO;
 
 public class Item
 {
-	public Guid Uuid { get; set; }
+	public Guid? Uuid { get; set; }
 
 	public DateTime? Expiry { get; set; }
 

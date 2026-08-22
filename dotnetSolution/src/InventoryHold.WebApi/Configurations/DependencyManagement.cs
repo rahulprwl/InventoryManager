@@ -4,6 +4,9 @@ using InventoryHold.Domain.Repositories;
 using InventoryHold.Domain.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
+using MongoDB.Bson.Serialization.Serializers;
 using MongoDB.Driver;
 using StackExchange.Redis;
 
@@ -29,6 +32,8 @@ public static class DependencyManagement
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        BsonSerializer.RegisterSerializer(new GuidSerializer(GuidRepresentation.Standard));
+
         string connectionString = configuration.GetConnectionString("Mongo")
             ?? throw new InvalidOperationException("ConnectionStrings:Mongo is not configured.");
         string databaseName = configuration["Mongo:Database"] ?? "inventory-hold";

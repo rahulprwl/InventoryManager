@@ -13,22 +13,24 @@ public sealed class ItemController(IItemService itemService) : ControllerBase
     [ProducesResponseType(typeof(BatchCreateItemsResponse), StatusCodes.Status207MultiStatus)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> AddItems(
-        [FromBody] IReadOnlyList<Item> items,
+        [FromBody] IReadOnlyList<CreateItemDto> requests,
         CancellationToken cancellationToken)
     {
-        if (items.Count == 0)
+        if (requests.Count == 0)
         {
             return BadRequest("At least one item is required.");
         }
 
-        var createdItems = new List<Item>(items.Count);
+        var createdItems = new List<Item>(requests.Count);
         var failures = new List<ItemCreationFailure>();
 
-        for (var index = 0; index < items.Count; index++)
+        for (var index = 0; index < requests.Count; index++)
         {
             try
             {
-                createdItems.Add(await itemService.AddItemAsync(items[index], cancellationToken));
+                createdItems.Add(await itemService.AddItemAsync(
+                    requests[index].ToItem(),
+                    cancellationToken));
             }
             catch (ArgumentException exception)
             {
