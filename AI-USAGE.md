@@ -8,6 +8,9 @@
   * Inspected the existing workspace and current files before editing. The repository-layer prompt was narrowed to the existing Hold and Item Mongo implementations, then routed through Domain-owned abstractions so Domain code does not depend on Infrastructure.
   * Used targeted file reads, git history, patch-based edits, and Docker Compose image builds. Prompts kept item creation and stock changes behind `IItemService`, with the Web API limited to HTTP translation and Contracts owning request DTOs.
   * Framed the item API around batch creation, offset/limit reads, explicit stock replacement, and database-owned UUID generation. The UUID serialization failure was traced from the Mongo stack trace to the driver configuration rather than patched in the controller.
+  * Extended the same DDD approach to holds: Contracts owns status and response DTOs, Domain owns repositories, services, and adapter interfaces, Infrastructure owns MongoDB, Redis, and RabbitMQ calls, and Web API owns controllers and the hosted expiry worker.
+  * Used the user's concrete runtime stack traces to route fixes. MongoDB `_id` deserialization was addressed in the repository mapping, and the hold identifier was separated into Mongo `ObjectId` (`holdId`) versus `TransactionId` (Redis/RabbitMQ correlation ID).
+  * Implemented the hold-list read as Redis cache discovery followed by a Mongo source-of-truth lookup, returning both cached and database status values for consistency inspection.
 
 ---
 
@@ -27,6 +30,11 @@ This section records decisions made during the current planning and infrastructu
 * **Item API:** Added service-backed batch creation, offset/limit retrieval, and explicit stock update endpoints. Empty pages return `404`, populated pages return `200`, and successful batch creation returns `201`.
 * **Shared create contract:** Moved `CreateItemDto` into Contracts and excluded UUID from the request so MongoDB generates it and the response returns the assigned value.
 * **UUID persistence fix:** Registered MongoDB's standard `GuidSerializer` so generated UUIDs can be serialized and queried consistently.
+* **Hold status model:** Added `HoldStatus` under the dedicated `InventoryHold.Contracts.Enums` namespace and added active, completed, released, and expired state handling.
+* **Queue-level expiration:** Used a durable topic exchange, a 15-minute queue-level TTL, a dead-letter topic exchange, and an expired-hold consumer queue. This keeps one common hold duration without per-message TTL head-of-line concerns.
+* **Redis concurrency control:** Added a five-second token-based hold lock with an atomic compare-token release script. Expiry and release/complete operations use the lock plus Mongo active-only status transitions.
+* **Cache and database reconciliation:** Kept hold state in Redis for a 30-minute buffer and used MongoDB as the authoritative status source when reading holds or when the Redis state is missing.
+* **Hold lifecycle API:** Added create, complete, release, and expiry orchestration, status event publishing, and `GET /api/holds` aggregation behind controller-to-service-to-adapter/repository boundaries.
 
 ### Rejected / Deferred Suggestions
 * **Smallest possible RabbitMQ image:** Did not switch to `rabbitmq:4.1-alpine` because the management UI is useful while developing and inspecting event topology. This can be changed for a production-oriented Compose profile later.
@@ -38,14 +46,18 @@ This section records decisions made during the current planning and infrastructu
 * **Validation workflow correction:** A host `dotnet build` was attempted during diagnosis, but human review rejected that as the project validation workflow. Docker Compose remains authoritative.
 * **Controller-local DTO:** The initial create request model was corrected and moved to the Contracts project as `CreateItemDto`.
 * **Client-owned UUID:** The controller was corrected so create requests do not require or accept a UUID; UUID assignment stays with the database repository.
+* **Incorrect hold identifier mapping:** The initial implementation exposed `TransactionId` as `holdId`, which made delete fail because Mongo deletes by `ObjectId`. Human review corrected the mapping so `holdId` is Mongo `_id`, while `TransactionId` remains the messaging and Redis key.
+* **Redis-only hold listing:** A Redis status cache alone was not accepted as the source of truth. The list API must discover cached IDs in Redis and then read current hold records and statuses from MongoDB before responding.
+* **Direct host validation:** The repository instruction requires Docker-based build validation; direct host `dotnet build` was identified as incorrect and should not be repeated.
 
 ---
 
 ## 3. Verification & Testing Strategy
-* **Completed validation:** `docker compose build api` succeeded after the controller and Contracts changes. Restore and `dotnet publish` ran inside the `mcr.microsoft.com/dotnet/sdk:10.0` build stage, and host `bin/obj` files are excluded through `.dockerignore`.
-* **Tests and mocking:** `ItemServiceTests` uses Moq for `IItemRepository` and FluentAssertions for delegation and validation checks, including paging, stock operations, invalid input, and repository call counts. No focused controller tests were added yet.
-* **Runtime diagnosis:** The first item insert exposed `GuidRepresentation.Unspecified` in MongoDB.Driver. The stack trace identified serialization before persistence; registering `GuidSerializer(GuidRepresentation.Standard)` addressed the configuration issue. A post-fix Docker rebuild was offered but declined, so runtime confirmation after that fix remains outstanding.
-* **Runtime validation:** A full `docker compose up` was not recorded as successful in this session, so service connectivity and DI resolution at runtime remain to be verified.
+* **Tests and mocking:** `ItemServiceTests` uses Moq for `IItemRepository` and FluentAssertions for delegation and validation checks, including paging, stock operations, invalid input, and repository call counts.
+* **Hold aggregation test:** Added `HoldServiceTests` with Moq mocks for `IHoldRepository` and `IHoldStateAdapter`. The test verifies that a cached Redis status and a different current Mongo status are both returned in `HoldSummaryDto`.
+* **Static checks:** Editor diagnostics reported no errors for the touched Contracts, Domain, Infrastructure, Web API, and test files. `git diff --check` passed.
+* **Docker validation:** Docker Compose build/recreate commands were used as the required validation path, but the current environment could not access `/var/run/docker.sock`; therefore the final container build and runtime behavior remain unconfirmed in this session.
+* **Runtime diagnosis:** MongoDB errors exposed two mapping issues: `Item` needed `_id` exclusion/extra-field tolerance, and public hold IDs needed to map to Mongo `ObjectId` rather than `TransactionId`. Both were corrected in Infrastructure and the API/service flow.
 
 ---
 
