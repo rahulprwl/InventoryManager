@@ -25,6 +25,21 @@ public sealed class InventoryMongoRepository : IInventoryMongoRepository
         return item;
     }
 
+    public async Task<IReadOnlyList<Item>> GetItemsAsync(
+        int offset,
+        int limit = 100,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(limit, 0);
+
+        return await items.Find(Builders<Item>.Filter.Empty)
+            .SortBy(item => item.Uuid)
+            .Skip(offset)
+            .Limit(limit)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<Item?> UpdateStockAsync(
         Guid itemUuid,
         int stock,

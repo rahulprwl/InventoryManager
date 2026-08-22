@@ -1,6 +1,7 @@
 using InventoryHold.Infrastructure.Mongo;
 using InventoryHold.Infrastructure.Redis;
 using InventoryHold.Domain.Repositories;
+using InventoryHold.Domain.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
@@ -39,6 +40,7 @@ public static class DependencyManagement
         services.AddScoped<IHoldMongoRepository, HoldMongoRepository>();
         services.AddScoped<IItemRepository>(serviceProvider =>
             serviceProvider.GetRequiredService<IInventoryMongoRepository>());
+        services.AddScoped<IItemService, ItemService>();
         services.AddScoped<IHoldRepository>(serviceProvider =>
             serviceProvider.GetRequiredService<IHoldMongoRepository>());
 
