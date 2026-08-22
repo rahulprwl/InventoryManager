@@ -1,0 +1,6 @@
+# AI Logging Directive
+At the end of every significant task or refactor, update `AI-USAGE.md` with:
+1. **Timestamp & Target Component**: (e.g., Domain/Holds, MongoDB Repository)
+2. **AI Action**: Brief summary of code/tests generated.
+3. **Architectural Adjustments**: If the user corrected your implementation (e.g., race conditions, DDD boundaries, DI issues), document the user's rejection and how it was fixed.
+Keep entries concise and structured directly in the existing `AI-USAGE.md` format.

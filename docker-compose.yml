@@ -1,0 +1,90 @@
+services:
+  mongodb:
+    image: mongo:4.4
+    container_name: inventory-hold-mongodb
+    restart: unless-stopped
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-change-me}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE:-inventory-hold}
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mongo --quiet --eval "db.adminCommand('ping').ok" | grep 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: inventory-hold-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: redis-server --appendonly yes --requirepass "${REDIS_PASSWORD:-change-me}"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - --no-auth-warning
+        - -a
+        - ${REDIS_PASSWORD:-change-me}
+        - ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    container_name: inventory-hold-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-change-me} 
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  api:
+    build:
+      context: ./dotnetSolution
+      dockerfile: Dockerfile
+    container_name: inventory-hold-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__Mongo=mongodb://${MONGO_ROOT_USERNAME:-admin}:${MONGO_ROOT_PASSWORD:-change-me}@mongodb:27017
+      - ConnectionStrings__Redis=redis:6379,password=${REDIS_PASSWORD:-change-me}
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Username=${RABBITMQ_USERNAME:-admin}
+      - RabbitMQ__Password=${RABBITMQ_PASSWORD:-change-me}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  mongodb-data:
+  redis-data:
+  rabbitmq-data:
